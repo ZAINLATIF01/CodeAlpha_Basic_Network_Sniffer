@@ -1,0 +1,69 @@
+#code Alpha Basic Network Sniffer
+import socketM
+import struct
+import binascii
+
+def ethernet_header(packet):
+    dest_mac, src_mac, eth_proto = struct.unpack("!6s6sH", packet[:14])
+    return {
+        "Destination MAC": binascii.hexlify(dest_mac).decode(),
+        "Source MAC": binascii.hexlify(src_mac).decode(),
+        "Protocol": eth_proto,
+        "Data": packet[14:]
+    }
+
+def ip_header(packet):
+    version_ihl = packet[0]
+    version = version_ihl >> 4
+    ihl = (version_ihl & 0xF) * 4
+    iph = struct.unpack("!BBHHHBBH4s4s", packet[:20])
+    return {
+        "Version": version,
+        "IHL": ihl,
+        "TTL": iph[5],
+        "Protocol": iph[6],
+        "Source IP": socket.inet_ntoa(iph[8]),
+        "Destination IP": socket.inet_ntoa(iph[9]),
+        "Data": packet[ihl:]
+    }
+
+def tcp_header(packet):
+    tcph = struct.unpack("!HHLLBBHHH", packet[:20])
+    return {
+        "Source Port": tcph[0],
+        "Destination Port": tcph[1],
+        "Sequence": tcph[2],
+        "Acknowledgment": tcph[3],
+        "Header Length": (tcph[4] >> 4) * 4,
+        "Flags": tcph[5],
+        "Window Size": tcph[6],
+        "Checksum": tcph[7],
+        "Urgent Pointer": tcph[8]
+    }
+
+def start_sniffer():
+    # AF_PACKET is only available on Linux. For Windows, use AF_INET and SOCK_RAW with IPPROTO_IP.
+    sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+
+    print("Starting network sniffer... (Ctrl+C to stop)\n")
+
+    try:
+        while True:
+            raw_data, addr = sock.recvfrom(65536)
+
+            eth = ethernet_header(raw_data)
+            print(f"\nEthernet Frame:\n  Source: {eth['Source MAC']}, Destination: {eth['Destination MAC']}, Protocol: {eth['Protocol']}")
+
+            if eth['Protocol'] == 0x0800:  # IPv4
+                ip = ip_header(eth['Data'])
+                print(f"IP Packet:\n  From: {ip['Source IP']} To: {ip['Destination IP']}, Protocol: {ip['Protocol']}")
+
+                if ip['Protocol'] == 6:  # TCP
+                    tcp = tcp_header(ip['Data'])
+                    print(f"TCP Segment:\n  From Port: {tcp['Source Port']} To Port: {tcp['Destination Port']}, Flags: {tcp['Flags']}")
+    except KeyboardInterrupt:
+        print("\nSniffer stopped.")
+        sock.close()
+
+if __name__ == "__main__":
+    start_sniffer()
